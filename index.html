@@ -1,0 +1,197 @@
+<style>
+  :root {
+    --font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-size-base: 13px;
+    --font-size-sm: 12px;
+    --font-size-stat: 16px;
+  }
+  * { font-family: var(--font-family); }
+  .ctrl { display:flex; align-items:center; gap:10px; margin:6px 0; font-size:var(--font-size-base); color:var(--color-text-secondary); }
+  .ctrl label { width:160px; flex-shrink:0; }
+  .ctrl span { width:36px; text-align:right; font-size:var(--font-size-base); font-weight:500; color:var(--color-text-primary); display:none; }
+  .ctrl input[type=number] {min-width:90px;width:auto; padding:3px 6px; font-size:var(--font-size-base); border:0.5px solid var(--color-border-secondary); border-radius:var(--border-radius-md); background:var(--color-background-primary); color:var(--color-text-primary); text-align:right; }
+  .ctrl input[type=number]:focus { outline:none; border-color:var(--color-border-primary); box-shadow:0 0 0 2px rgba(128,128,128,0.15); }
+  .section { font-size:var(--font-size-sm); font-weight:500; color:var(--color-text-secondary); text-transform:uppercase; letter-spacing:.05em; margin:16px 0 6px; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; }
+  .tab { padding:6px 14px; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-secondary); font-size:var(--font-size-base); cursor:pointer; background:transparent; color:var(--color-text-secondary); }
+  .tab.active { background:var(--color-background-secondary); color:var(--color-text-primary); border-color:var(--color-border-primary); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media(max-width:520px){ .grid2{grid-template-columns:1fr;} }
+</style>
+
+<div style="padding:1rem 0;">
+  <div class="grid2">
+    <div>
+      <div class="section" id="ax-label">Front</div>
+      <div class="ctrl"><label>Peak friction (D)</label><input type="range" id="D" min="0" max="2" step=".001" value="1.8"><span id="Dv">1.8</span><input type="number" id="Dn" min="0" max="2" step=".001" value="1.8"></div>
+
+      <div class="ctrl"><label>Stiffness (B)</label><input type="range" id="B" min="0" max="20" step=".001" value="11"><span id="Bv">11</span><input type="number" id="Bn" min="0" max="20" step=".001" value="11"></div>
+
+      <div class="ctrl"><label>Shape (C)</label><input type="range" id="C" min="0" max="3" step=".001" value="1.25"><span id="Cv">1.25</span><input type="number" id="Cn" min="0" max="3" step=".001" value="1.25"></div>
+
+      <div class="ctrl"><label>Curvature (E)</label><input type="range" id="E" min="-2" max="1" step=".001" value="0"><span id="Ev">1</span><input type="number" id="En" min="-2" max="1" step=".001" value="0"></div>
+
+    </div>
+    <div id="rear-panel">
+      <div class="section">Rear</div>
+      <div class="ctrl"><label>Peak friction (D)</label><input type="range" id="D2" min="0" max="2" step=".001" value="2"><span id="D2v">2</span><input type="number" id="D2n" min="0" max="2" step=".001" value="2"></div>
+
+      <div class="ctrl"><label>Stiffness (B)</label><input type="range" id="B2" min="0" max="20" step=".001" value="14"><span id="B2v">14</span><input type="number" id="B2n" min="0" max="20" step=".001" value="14"></div>
+
+      <div class="ctrl"><label>Shape (C)</label><input type="range" id="C2" min="0" max="3" step=".001" value="1.4"><span id="C2v">1.4</span><input type="number" id="C2n" min="0" max="3" step=".001" value="1.4"></div>
+
+      <div class="ctrl"><label>Curvature (E)</label><input type="range" id="E2" min="-2" max="1" step=".001" value="0"><span id="E2v">1</span><input type="number" id="E2n" min="-2" max="1" step=".001" value="0"></div>
+
+    </div>
+  </div>
+
+  <div style="position:relative;width:100%;height:260px;margin-top:16px;">
+    <canvas id="chart" role="img" aria-label="Pacejka Magic Formula lateral force vs slip angle for front and rear tires"></canvas>
+  </div>
+
+  <div style="display:flex;gap:20px;margin-top:10px;font-size:var(--font-size-sm);color:var(--color-text-secondary);">
+    <span style="display:flex;align-items:center;gap:5px;"><span style="width:18px;height:3px;background:#378ADD;display:inline-block;border-radius:2px;"></span>Front</span>
+    <span style="display:flex;align-items:center;gap:5px;"><span style="width:18px;height:3px;background:#D85A30;display:inline-block;border-radius:2px"></span>Rear</span>
+  </div>
+
+  <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="stats"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const sliders = ['D','B','C','E','D2','B2','C2','E2'];
+const vals = {};
+
+sliders.forEach(id => {
+  const range = document.getElementById(id);
+  const numIn = document.getElementById(id + 'n');
+  const out   = document.getElementById(id + 'v');
+
+  vals[id] = parseFloat(range.value);
+
+  function fmt(v){
+    return parseFloat(v.toFixed(3)).toString();
+  }
+
+  range.addEventListener('input', () => {
+    vals[id] = parseFloat(range.value);
+    numIn.value = fmt(vals[id]);
+    out.textContent = fmt(vals[id]);
+    draw();
+  });
+
+  numIn.addEventListener('input', () => {
+    const raw = parseFloat(numIn.value);
+    if (isNaN(raw)) return;
+    const clamped = Math.min(parseFloat(range.max), Math.max(parseFloat(range.min), raw));
+    vals[id] = clamped;
+    range.value = clamped;
+    out.textContent = fmt(clamped);
+    draw();
+  });
+
+  numIn.addEventListener('blur', () => {
+    numIn.value = fmt(vals[id]);
+  });
+
+  out.textContent = fmt(vals[id]);
+  numIn.value = fmt(vals[id]);
+});
+
+let activeAx = 'both';
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    activeAx = t.dataset.ax;
+    document.getElementById('rear-panel').style.opacity = activeAx === 'front' ? '0.3' : '1';
+    document.getElementById('ax-label').textContent = activeAx === 'rear' ? 'Rear' : 'Front';
+    draw();
+  });
+});
+
+function pacejka(alpha, B, C, D, E){
+  const Bα = B * alpha;
+  return D * Math.sin(C * Math.atan(Bα - E*(Bα - Math.atan(Bα))));
+}
+
+function peakAngle(B, C, E){
+  let best = 0, bestF = 0;
+  for (let a = 0; a < 40; a += 0.01){
+    const f = pacejka(a * Math.PI/180, B, C, 1, E);
+    if (f > bestF){ bestF = f; best = a; }
+  }
+  return best;
+}
+
+const ctx = document.getElementById('chart').getContext('2d');
+const alphas = Array.from({length:200}, (_, i) => i * 0.2);
+const fontFamily = getComputedStyle(document.documentElement).getPropertyValue('--font-family').trim() || 'system-ui, sans-serif';
+
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: alphas.map(a => a.toFixed(1)),
+    datasets: [
+      {label:'Front', data:[], borderColor:'#378ADD', borderWidth:2, pointRadius:0, tension:0, fill:false, borderDash:[]},
+      {label:'Rear',  data:[], borderColor:'#D85A30', borderWidth:2, pointRadius:0, tension:0, fill:false, borderDash:[]}
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    animation:{duration:80},
+    plugins:{
+      legend:{display:false},
+      tooltip:{
+        callbacks:{
+          title: items => `Slip angle: ${parseFloat(items[0].label).toFixed(1)}°`,
+          label: item  => `${item.dataset.label}: ${item.raw.toFixed(3)}`
+        }
+      }
+    },
+    scales:{
+      x:{
+        title:{display:true, text:'Slip angle (°)', font:{size:12, family: fontFamily}},
+        ticks:{maxTicksLimit:40, color:'#888', font:{family: fontFamily}},
+        grid:{color:'rgba(192,192,192,1)', lineWidth: 1}
+      },
+      y:{
+        title:{display:true, text:'Lateral force coefficient', font:{size:12, family: fontFamily}},
+        min:0, max:3,
+        ticks:{maxTicksLimit:20, color:'#888', font:{family: fontFamily}},
+        grid:{color:'rgba(192,192,192,1)', lineWidth: 2}
+      }
+    }
+  }
+});
+
+function draw(){
+  const fData = alphas.map(a => pacejka(a * Math.PI/180, vals.B, vals.C, vals.D, vals.E));
+  const rData = alphas.map(a => pacejka(a * Math.PI/180, vals.B2, vals.C2, vals.D2, vals.E2));
+  chart.data.datasets[0].data = activeAx === 'rear'  ? alphas.map(() => null) : fData;
+  chart.data.datasets[1].data = activeAx === 'front' ? alphas.map(() => null) : rData;
+  chart.options.scales.y.max = 2.0
+  chart.update();
+
+  const fPeak  = peakAngle(vals.B, vals.C, vals.E);
+  const rPeak  = peakAngle(vals.B2, vals.C2, vals.E2);
+  const fPeakF = pacejka(fPeak * Math.PI/180, vals.B, vals.C, vals.D, vals.E);
+  const rPeakF = pacejka(rPeak * Math.PI/180, vals.B2, vals.C2, vals.D2, vals.E2);
+
+  const statFont = `font-size:var(--font-size-stat)`;
+  const smFont   = `font-size:var(--font-size-sm)`;
+
+  document.getElementById('stats').innerHTML = `
+    <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;${smFont};">
+      <div style="color:var(--color-text-secondary);margin-bottom:4px;">Front peak</div>
+      <div style="${statFont};font-weight:500;color:#185FA5;">${fPeakF.toFixed(2)}</div>
+      <div style="color:var(--color-text-secondary);margin-top:2px;">at ±${fPeak.toFixed(1)}°</div>
+    </div>
+    <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;${smFont};">
+      <div style="color:var(--color-text-secondary);margin-bottom:4px;">Rear peak</div>
+      <div style="${statFont};font-weight:500;color:#993C1D;">${rPeakF.toFixed(2)}</div>
+      <div style="color:var(--color-text-secondary);margin-top:2px;">at ±${rPeak.toFixed(1)}°</div>
+    </div>`;
+}
+draw();
+</script>
